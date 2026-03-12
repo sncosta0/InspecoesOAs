@@ -6,73 +6,23 @@
     'use strict';
 
     // ----------------------------------------------------------
-    // Typed Lists (Locations, Anomalies, Works)
+    // Settings (persisted in localStorage)
     // ----------------------------------------------------------
-    const LOCATIONS = [
-        'Tabuleiro',
-        'Viga principal',
-        'Viga transversal',
-        'Laje',
-        'Pilar',
-        'Encontro',
-        'Fundação',
-        'Aparelho de apoio',
-        'Junta de dilatação',
-        'Guarda-corpos',
-        'Cornija',
-        'Passeio',
-        'Guarda de segurança',
-        'Sistema de drenagem',
-        'Talude',
-        'Muro de avenida',
-        'Viga de bordadura',
-        'Carlinga',
-        'Pré-laje',
-        'Outro',
-    ];
+    const SETTINGS_KEY = 'inspecoesoa_settings';
 
-    const ANOMALIES = [
-        'Fissura',
-        'Fenda',
-        'Delaminação',
-        'Eflorescência',
-        'Corrosão de armaduras',
-        'Corrosão metálica',
-        'Descasque de betão',
-        'Desgaste',
-        'Infiltração',
-        'Manchas de humidade',
-        'Manchas de ferrugem',
-        'Deformação',
-        'Assentamento',
-        'Inclinação',
-        'Rotura',
-        'Ausência de elemento',
-        'Obstrução de drenagem',
-        'Vegetação',
-        'Grafiti',
-        'Dano de impacto',
-        'Outro',
-    ];
+    function loadSettings() {
+        try {
+            const raw = localStorage.getItem(SETTINGS_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (_) {}
+        return { locations: [], anomalies: [], works: [], apiKey: '', aiProvider: 'openai' };
+    }
 
-    const WORKS = [
-        'Reparação de betão',
-        'Injeção de fissuras',
-        'Proteção anticorrosiva',
-        'Substituição de aparelho de apoio',
-        'Substituição de junta de dilatação',
-        'Reparação de guarda-corpos',
-        'Limpeza de drenagem',
-        'Impermeabilização',
-        'Pintura',
-        'Limpeza geral',
-        'Remoção de vegetação',
-        'Reforço estrutural',
-        'Substituição de elemento',
-        'Monitorização',
-        'Estudo específico',
-        'Outro',
-    ];
+    function saveSettings(settings) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
+
+    let settings = loadSettings();
 
     // ----------------------------------------------------------
     // IndexedDB Setup
@@ -143,7 +93,6 @@
     let audioChunks = [];
     let recTimerInterval = null;
 
-    // Navigation stack for back button
     const navStack = [];
 
     // ----------------------------------------------------------
@@ -152,14 +101,15 @@
     const $ = (sel) => document.querySelector(sel);
     const headerTitle = $('#header-title');
     const btnBack = $('#btn-back');
+    const btnSettings = $('#btn-settings');
 
-    // Screens
     const screenList = $('#screen-list');
     const screenForm = $('#screen-form');
     const screenDetail = $('#screen-detail');
     const screenPhoto = $('#screen-photo');
     const screenOffice = $('#screen-office');
     const screenRecords = $('#screen-records');
+    const screenSettings = $('#screen-settings');
 
     // ----------------------------------------------------------
     // Navigation
@@ -185,12 +135,56 @@
     btnBack.addEventListener('click', () => {
         if (navStack.length === 0) return;
         const prev = navStack.pop();
-        // Refresh content if going back to certain screens
         if (prev.screen === screenList) renderInspectionList();
         if (prev.screen === screenDetail) renderInspectionDetail();
         if (prev.screen === screenOffice) renderOfficePhase();
+        if (prev.screen === screenRecords) renderRecordsScreen();
         showScreen(prev.screen, prev.title, false);
     });
+
+    // ----------------------------------------------------------
+    // Screen: Settings
+    // ----------------------------------------------------------
+    btnSettings.addEventListener('click', () => {
+        renderSettingsScreen();
+    });
+
+    function renderSettingsScreen() {
+        // API key
+        $('#settings-api-key').value = settings.apiKey || '';
+
+        // AI provider
+        $('#settings-ai-provider').value = settings.aiProvider || 'openai';
+
+        // Lists
+        $('#settings-locations').value = (settings.locations || []).join('\n');
+        $('#settings-anomalies').value = (settings.anomalies || []).join('\n');
+        $('#settings-works').value = (settings.works || []).join('\n');
+
+        showScreen(screenSettings, 'Definições');
+    }
+
+    $('#settings-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        settings.apiKey = $('#settings-api-key').value.trim();
+        settings.aiProvider = $('#settings-ai-provider').value;
+        settings.locations = parseTextareaList($('#settings-locations').value);
+        settings.anomalies = parseTextareaList($('#settings-anomalies').value);
+        settings.works = parseTextareaList($('#settings-works').value);
+        saveSettings(settings);
+        // Go back
+        if (navStack.length > 0) {
+            const prev = navStack.pop();
+            showScreen(prev.screen, prev.title, false);
+        }
+    });
+
+    function parseTextareaList(text) {
+        return text
+            .split('\n')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+    }
 
     // ----------------------------------------------------------
     // Screen: Inspection List
@@ -230,7 +224,6 @@
             })
             .join('');
 
-        // Click handlers
         list.querySelectorAll('.inspection-card').forEach((card) => {
             card.addEventListener('click', (e) => {
                 if (e.target.classList.contains('btn-delete-inspection')) return;
@@ -294,7 +287,6 @@
         };
         await dbPut('inspections', inspection);
         currentInspectionId = inspection.id;
-        // Remove form from nav stack and go to detail
         navStack.pop();
         renderInspectionDetail();
     });
@@ -373,7 +365,6 @@
         cameraInput.value = '';
     });
 
-    // Office phase button
     $('#btn-office-phase').addEventListener('click', () => {
         renderOfficePhase();
     });
@@ -390,7 +381,6 @@
         const audioCount = photo.audios ? photo.audios.length : 0;
         $('#audio-count').textContent = audioCount;
 
-        // Audio list
         const audioList = $('#audio-list');
         audioList.innerHTML = (photo.audios || [])
             .map(
@@ -412,7 +402,6 @@
             });
         });
 
-        // Show/hide record button
         const btnRecord = $('#btn-record');
         btnRecord.classList.toggle('hidden', audioCount >= 3);
 
@@ -489,12 +478,13 @@
                 .map((photo, i) => {
                     const audioCount = photo.audios ? photo.audios.length : 0;
                     const recordCount = photo.records ? photo.records.length : 0;
+                    const hasTranscription = photo.audios && photo.audios.some((a) => a.transcription);
                     return `
                     <div class="office-photo-card" data-index="${i}">
                         <img src="${photo.dataUrl}" alt="Foto ${i + 1}">
                         <div class="office-card-info">
                             <h4>Foto ${i + 1}</h4>
-                            <p>${audioCount} áudio${audioCount !== 1 ? 's' : ''}</p>
+                            <p>${audioCount} áudio${audioCount !== 1 ? 's' : ''}${hasTranscription ? ' (transcrito)' : ''}</p>
                             <p>${recordCount} registo${recordCount !== 1 ? 's' : ''}</p>
                         </div>
                     </div>`;
@@ -513,7 +503,7 @@
     }
 
     // ----------------------------------------------------------
-    // Screen: Photo Records
+    // Screen: Photo Records (with AI)
     // ----------------------------------------------------------
     async function renderRecordsScreen() {
         const ins = await dbGet('inspections', currentInspectionId);
@@ -522,15 +512,44 @@
 
         $('#records-photo-preview').src = photo.dataUrl;
 
-        // Audio playback
+        // Audio playback with transcriptions
         const audioContainer = $('#records-audio-playback');
         audioContainer.innerHTML = (photo.audios || [])
-            .map((aud, i) => `<audio controls src="${aud.dataUrl}"></audio>`)
+            .map(
+                (aud, i) => `
+            <div class="audio-playback-item">
+                <div class="audio-playback-header">
+                    <span class="audio-label">Áudio ${i + 1}</span>
+                </div>
+                <audio controls src="${aud.dataUrl}"></audio>
+                ${aud.transcription ? `<div class="transcription-text">${escHtml(aud.transcription)}</div>` : ''}
+            </div>`
+            )
             .join('');
 
-        // Records list
-        renderRecordsList(photo);
+        // AI buttons
+        const hasAudios = photo.audios && photo.audios.length > 0;
+        const hasApiKey = settings.apiKey && settings.apiKey.length > 0;
+        const hasLists = settings.locations.length > 0 || settings.anomalies.length > 0 || settings.works.length > 0;
+        const allTranscribed = hasAudios && photo.audios.every((a) => a.transcription);
 
+        const btnTranscribe = $('#btn-ai-transcribe');
+        const btnExtract = $('#btn-ai-extract');
+
+        btnTranscribe.classList.toggle('hidden', !hasAudios || !hasApiKey);
+        btnExtract.classList.toggle('hidden', !allTranscribed || !hasApiKey || !hasLists);
+
+        if (!hasApiKey) {
+            $('#ai-status').textContent = 'Configure a chave API nas Definições para usar IA.';
+            $('#ai-status').classList.remove('hidden');
+        } else if (!hasLists) {
+            $('#ai-status').textContent = 'Configure as listas nas Definições para extrair registos com IA.';
+            $('#ai-status').classList.remove('hidden');
+        } else {
+            $('#ai-status').classList.add('hidden');
+        }
+
+        renderRecordsList(photo);
         showScreen(screenRecords, `Foto ${currentPhotoIndex + 1} - Registos`);
     }
 
@@ -539,16 +558,17 @@
         const records = photo.records || [];
 
         if (records.length === 0) {
-            list.innerHTML = '<div class="empty-state"><p>Sem registos. Ouça os áudios e adicione registos.</p></div>';
+            list.innerHTML = '<div class="empty-state"><p>Sem registos. Use a IA para extrair registos dos áudios ou adicione manualmente.</p></div>';
         } else {
             list.innerHTML = records
                 .map(
                     (rec, i) => `
-                <div class="record-card">
+                <div class="record-card${rec.aiGenerated ? ' ai-generated' : ''}">
                     <div class="record-actions">
                         <button class="btn-edit-record" data-index="${i}" title="Editar">&#9998;</button>
                         <button class="btn-delete-record" data-index="${i}" title="Eliminar">&times;</button>
                     </div>
+                    ${rec.aiGenerated ? '<div class="ai-badge">IA</div>' : ''}
                     <div class="record-label">Localização</div>
                     <div class="record-value">${escHtml(rec.location)}</div>
                     <div class="record-label">Anomalia</div>
@@ -582,6 +602,194 @@
     }
 
     // ----------------------------------------------------------
+    // AI: Transcribe Audios (Whisper)
+    // ----------------------------------------------------------
+    $('#btn-ai-transcribe').addEventListener('click', async () => {
+        const btn = $('#btn-ai-transcribe');
+        btn.disabled = true;
+        btn.textContent = 'A transcrever...';
+
+        try {
+            const ins = await dbGet('inspections', currentInspectionId);
+            const photo = ins.photos[currentPhotoIndex];
+
+            for (let i = 0; i < photo.audios.length; i++) {
+                const aud = photo.audios[i];
+                if (aud.transcription) continue; // already transcribed
+
+                btn.textContent = `A transcrever áudio ${i + 1}/${photo.audios.length}...`;
+                const transcription = await transcribeAudio(aud.dataUrl);
+                aud.transcription = transcription;
+            }
+
+            await dbPut('inspections', ins);
+            renderRecordsScreen();
+        } catch (err) {
+            alert('Erro na transcrição: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Transcrever Áudios com IA';
+        }
+    });
+
+    async function transcribeAudio(audioDataUrl) {
+        const blob = dataUrlToBlob(audioDataUrl);
+        const formData = new FormData();
+        formData.append('file', blob, 'audio.webm');
+        formData.append('model', 'whisper-1');
+        formData.append('language', 'pt');
+
+        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${settings.apiKey}`,
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Whisper API erro ${response.status}: ${err}`);
+        }
+
+        const data = await response.json();
+        return data.text;
+    }
+
+    // ----------------------------------------------------------
+    // AI: Extract Records from Transcriptions
+    // ----------------------------------------------------------
+    $('#btn-ai-extract').addEventListener('click', async () => {
+        const btn = $('#btn-ai-extract');
+        btn.disabled = true;
+        btn.textContent = 'A analisar com IA...';
+
+        try {
+            const ins = await dbGet('inspections', currentInspectionId);
+            const photo = ins.photos[currentPhotoIndex];
+
+            const transcriptions = photo.audios
+                .map((a, i) => `Áudio ${i + 1}: ${a.transcription}`)
+                .join('\n\n');
+
+            const records = await extractRecords(transcriptions);
+
+            if (!photo.records) photo.records = [];
+            records.forEach((rec) => {
+                rec.aiGenerated = true;
+                photo.records.push(rec);
+            });
+
+            await dbPut('inspections', ins);
+            renderRecordsScreen();
+        } catch (err) {
+            alert('Erro na extração: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Extrair Registos com IA';
+        }
+    });
+
+    async function extractRecords(transcriptionText) {
+        const systemPrompt = `És um assistente especializado em inspeções de obras de arte (pontes).
+A partir de transcrições de áudio feitas durante uma inspeção, deves extrair registos estruturados.
+
+Cada registo deve ter:
+- location: a localização do elemento inspecionado (DEVE ser uma das opções da lista fornecida, ou a mais próxima)
+- anomaly: a anomalia observada (DEVE ser uma das opções da lista fornecida, ou a mais próxima)
+- work: o trabalho recomendado (DEVE ser uma das opções da lista fornecida, ou a mais próxima)
+- notes: observações adicionais relevantes mencionadas no áudio
+
+LISTAS DISPONÍVEIS:
+
+Localizações:
+${settings.locations.map((l) => '- ' + l).join('\n')}
+
+Anomalias:
+${settings.anomalies.map((a) => '- ' + a).join('\n')}
+
+Trabalhos:
+${settings.works.map((w) => '- ' + w).join('\n')}
+
+REGRAS:
+- Extrai TODOS os registos distintos mencionados nas transcrições
+- Cada combinação localização+anomalia deve ser um registo separado
+- Usa EXATAMENTE os valores das listas (não inventes novos)
+- Se algo mencionado não corresponder a nenhum item da lista, usa o mais próximo e explica nas notas
+- Responde APENAS com JSON válido, um array de objetos`;
+
+        const userPrompt = `Transcrições dos áudios desta foto de inspeção:\n\n${transcriptionText}\n\nExtrai os registos em formato JSON.`;
+
+        const provider = settings.aiProvider || 'openai';
+        let apiUrl, headers, body;
+
+        if (provider === 'anthropic') {
+            apiUrl = 'https://api.anthropic.com/v1/messages';
+            headers = {
+                'Content-Type': 'application/json',
+                'x-api-key': settings.apiKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+            };
+            body = JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: userPrompt }],
+            });
+        } else {
+            apiUrl = 'https://api.openai.com/v1/chat/completions';
+            headers = {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${settings.apiKey}`,
+            };
+            body = JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                temperature: 0.2,
+                response_format: { type: 'json_object' },
+            });
+        }
+
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers,
+            body,
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`API erro ${response.status}: ${err}`);
+        }
+
+        const data = await response.json();
+
+        let text;
+        if (provider === 'anthropic') {
+            text = data.content[0].text;
+        } else {
+            text = data.choices[0].message.content;
+        }
+
+        // Parse JSON from response (handle markdown code blocks)
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+            throw new Error('A IA não devolveu registos válidos.');
+        }
+
+        const records = JSON.parse(jsonMatch[0]);
+        return records.map((r) => ({
+            location: r.location || '',
+            anomaly: r.anomaly || '',
+            work: r.work || '',
+            notes: r.notes || '',
+        }));
+    }
+
+    // ----------------------------------------------------------
     // Record Modal
     // ----------------------------------------------------------
     let editingRecordIndex = null;
@@ -602,9 +810,9 @@
         editingRecordIndex = index !== undefined ? index : null;
         $('#modal-record-title').textContent = editingRecordIndex !== null ? 'Editar Registo' : 'Novo Registo';
 
-        populateSelect($('#rec-location'), LOCATIONS);
-        populateSelect($('#rec-anomaly'), ANOMALIES);
-        populateSelect($('#rec-work'), WORKS);
+        populateSelect($('#rec-location'), settings.locations);
+        populateSelect($('#rec-anomaly'), settings.anomalies);
+        populateSelect($('#rec-work'), settings.works);
 
         if (record) {
             $('#rec-location').value = record.location || '';
@@ -690,6 +898,18 @@
         });
     }
 
+    function dataUrlToBlob(dataUrl) {
+        const parts = dataUrl.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const byteStr = atob(parts[1]);
+        const ab = new ArrayBuffer(byteStr.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteStr.length; i++) {
+            ia[i] = byteStr.charCodeAt(i);
+        }
+        return new Blob([ab], { type: mime });
+    }
+
     function escHtml(str) {
         const div = document.createElement('div');
         div.textContent = str || '';
@@ -704,7 +924,6 @@
         renderInspectionList();
         showScreen(screenList, 'Inspeções OA', false);
 
-        // Register service worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(() => {});
         }
