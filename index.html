@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a5276">
+    <title>Inspeções OA</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header id="app-header">
+        <button id="btn-back" class="header-btn hidden" aria-label="Voltar">&#8592;</button>
+        <h1 id="header-title">Inspeções OA</h1>
+        <div class="header-spacer"></div>
+    </header>
+
+    <!-- Screen: List of Inspections -->
+    <section id="screen-list" class="screen active">
+        <div id="inspection-list" class="list-container"></div>
+        <button id="btn-new-inspection" class="fab">+</button>
+    </section>
+
+    <!-- Screen: New/Edit Inspection -->
+    <section id="screen-form" class="screen">
+        <form id="inspection-form" class="form-container">
+            <div class="form-group">
+                <label for="inp-name">Nome da Ponte</label>
+                <input type="text" id="inp-name" required placeholder="Ex: Ponte sobre o Rio Tejo">
+            </div>
+            <div class="form-group">
+                <label for="inp-number">Número</label>
+                <input type="text" id="inp-number" required placeholder="Ex: OA-1234">
+            </div>
+            <div class="form-group">
+                <label for="inp-plate">Matrícula</label>
+                <input type="text" id="inp-plate" placeholder="Opcional">
+            </div>
+            <div class="form-group">
+                <label>Coordenadas GPS</label>
+                <div class="gps-row">
+                    <input type="text" id="inp-lat" placeholder="Latitude" readonly>
+                    <input type="text" id="inp-lng" placeholder="Longitude" readonly>
+                    <button type="button" id="btn-gps" class="btn-secondary">Obter GPS</button>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary">Criar Inspeção</button>
+        </form>
+    </section>
+
+    <!-- Screen: Inspection Detail (field work) -->
+    <section id="screen-detail" class="screen">
+        <div class="detail-header">
+            <h2 id="detail-title"></h2>
+            <p id="detail-info"></p>
+        </div>
+        <div class="detail-actions">
+            <button id="btn-take-photo" class="btn-primary btn-large">Tirar Foto</button>
+            <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
+            <button id="btn-office-phase" class="btn-secondary">Fase de Escritório</button>
+        </div>
+        <div id="photo-grid" class="photo-grid"></div>
+    </section>
+
+    <!-- Screen: Photo Detail (audio recordings) -->
+    <section id="screen-photo" class="screen">
+        <div class="photo-detail">
+            <img id="photo-preview" src="" alt="Foto">
+            <div id="audio-section" class="audio-section">
+                <h3>Áudios (<span id="audio-count">0</span>/3)</h3>
+                <div id="audio-list" class="audio-list"></div>
+                <button id="btn-record" class="btn-primary btn-record">Gravar Áudio</button>
+                <div id="recording-indicator" class="recording-indicator hidden">
+                    <span class="rec-dot"></span> A gravar... <span id="rec-timer">0:00</span>
+                    <button id="btn-stop-record" class="btn-danger">Parar</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Screen: Office Phase (typed records) -->
+    <section id="screen-office" class="screen">
+        <div class="office-container">
+            <h2 id="office-title"></h2>
+            <div id="office-photos" class="office-photos-list"></div>
+        </div>
+    </section>
+
+    <!-- Screen: Photo Records (per-photo typed records) -->
+    <section id="screen-records" class="screen">
+        <div class="records-container">
+            <img id="records-photo-preview" src="" alt="Foto" class="records-photo-img">
+            <div id="records-audio-playback" class="records-audio-playback"></div>
+            <div id="records-list" class="records-list"></div>
+            <button id="btn-add-record" class="btn-primary">+ Adicionar Registo</button>
+        </div>
+    </section>
+
+    <!-- Modal: Add/Edit Record -->
+    <div id="modal-record" class="modal hidden">
+        <div class="modal-content">
+            <h3 id="modal-record-title">Novo Registo</h3>
+            <form id="record-form">
+                <div class="form-group">
+                    <label for="rec-location">Localização</label>
+                    <select id="rec-location" required>
+                        <option value="">Selecionar...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="rec-anomaly">Anomalia</label>
+                    <select id="rec-anomaly" required>
+                        <option value="">Selecionar...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="rec-work">Trabalho</label>
+                    <select id="rec-work" required>
+                        <option value="">Selecionar...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="rec-notes">Observações</label>
+                    <textarea id="rec-notes" rows="3" placeholder="Notas adicionais..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="btn-cancel-record" class="btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Delete Confirmation -->
+    <div id="modal-delete" class="modal hidden">
+        <div class="modal-content">
+            <h3>Confirmar Eliminação</h3>
+            <p id="delete-message">Tem a certeza?</p>
+            <div class="modal-actions">
+                <button id="btn-cancel-delete" class="btn-secondary">Cancelar</button>
+                <button id="btn-confirm-delete" class="btn-danger">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
