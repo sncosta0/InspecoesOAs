@@ -408,14 +408,27 @@ header h1 {
     margin-bottom: 12px;
 }
 
+.audio-item-wrap {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
 .audio-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--card);
     padding: 10px 12px;
-    border-radius: 8px;
-    box-shadow: var(--shadow);
+}
+
+.audio-transcription {
+    padding: 6px 12px 10px;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.4;
+    border-top: 1px solid var(--border);
+    background: #f8f9fa;
 }
 
 .audio-item audio {

@@ -385,9 +385,12 @@
         audioList.innerHTML = (photo.audios || [])
             .map(
                 (aud, i) => `
-            <div class="audio-item">
-                <audio controls src="${aud.dataUrl}"></audio>
-                <button class="btn-delete-audio" data-index="${i}">&times;</button>
+            <div class="audio-item-wrap">
+                <div class="audio-item">
+                    <audio controls src="${aud.dataUrl}"></audio>
+                    <button class="btn-delete-audio" data-index="${i}">&times;</button>
+                </div>
+                ${aud.transcription ? `<div class="audio-transcription">${escHtml(aud.transcription)}</div>` : ''}
             </div>`
             )
             .join('');
