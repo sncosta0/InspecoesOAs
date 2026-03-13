@@ -995,6 +995,373 @@ REGRAS:
     }
 
     // ----------------------------------------------------------
+    // Export / Import Inspections
+    // ----------------------------------------------------------
+    $('#btn-export-all').addEventListener('click', async () => {
+        const inspections = await dbGetAll('inspections');
+        downloadJson(inspections, 'inspecoes_oa_backup.json');
+    });
+
+    $('#btn-export-inspection').addEventListener('click', async () => {
+        const ins = await dbGet('inspections', currentInspectionId);
+        if (!ins) return;
+        downloadJson([ins], `inspecao_${ins.number || ins.id}.json`);
+    });
+
+    function downloadJson(data, filename) {
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    $('#btn-import-data').addEventListener('click', () => {
+        $('#import-file-input').click();
+    });
+
+    $('#import-file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            const inspections = Array.isArray(data) ? data : [data];
+            let imported = 0;
+            for (const ins of inspections) {
+                if (ins.id && ins.photos) {
+                    await dbPut('inspections', ins);
+                    imported++;
+                }
+            }
+            alert(`${imported} inspeção(ões) importada(s) com sucesso.`);
+            renderInspectionList();
+        } catch (err) {
+            alert('Erro ao importar: ' + err.message);
+        }
+        e.target.value = '';
+    });
+
+    // ----------------------------------------------------------
+    // Merge Inspections
+    // ----------------------------------------------------------
+    $('#btn-merge-inspection').addEventListener('click', async () => {
+        const inspections = await dbGetAll('inspections');
+        const others = inspections.filter((i) => i.id !== currentInspectionId);
+
+        if (others.length === 0) {
+            alert('Não existem outras inspeções para juntar.');
+            return;
+        }
+
+        const list = $('#merge-list');
+        list.innerHTML = others
+            .map((ins) => {
+                const photoCount = ins.photos ? ins.photos.length : 0;
+                return `
+                <div class="merge-item" data-id="${ins.id}">
+                    <div class="merge-item-info">
+                        <h4>${escHtml(ins.number)} - ${escHtml(ins.name)}</h4>
+                        <p>${photoCount} foto${photoCount !== 1 ? 's' : ''}</p>
+                    </div>
+                </div>`;
+            })
+            .join('');
+
+        list.querySelectorAll('.merge-item').forEach((item) => {
+            item.addEventListener('click', async () => {
+                const sourceId = item.dataset.id;
+                if (!confirm('Juntar as fotos desta inspeção à inspeção atual? A inspeção selecionada será eliminada.')) return;
+
+                const target = await dbGet('inspections', currentInspectionId);
+                const source = await dbGet('inspections', sourceId);
+
+                if (source.photos && source.photos.length > 0) {
+                    target.photos = target.photos.concat(source.photos);
+                }
+
+                await dbPut('inspections', target);
+                await dbDelete('inspections', sourceId);
+
+                $('#modal-merge').classList.add('hidden');
+                alert(`${source.photos ? source.photos.length : 0} fotos adicionadas. Inspeção "${source.number}" eliminada.`);
+                renderInspectionDetail();
+            });
+        });
+
+        $('#modal-merge').classList.remove('hidden');
+    });
+
+    $('#btn-cancel-merge').addEventListener('click', () => {
+        $('#modal-merge').classList.add('hidden');
+    });
+
+    // ----------------------------------------------------------
+    // Import / Export Lists
+    // ----------------------------------------------------------
+    $('#btn-import-lists').addEventListener('click', () => {
+        $('#import-lists-file').click();
+    });
+
+    $('#import-lists-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+
+            // Try JSON format first: { locations: [...], anomalies: [...], works: [...] }
+            try {
+                const data = JSON.parse(text);
+                if (data.locations) {
+                    $('#settings-locations').value = (Array.isArray(data.locations) ? data.locations : []).join('\n');
+                }
+                if (data.anomalies) {
+                    $('#settings-anomalies').value = (Array.isArray(data.anomalies) ? data.anomalies : []).join('\n');
+                }
+                if (data.works) {
+                    $('#settings-works').value = (Array.isArray(data.works) ? data.works : []).join('\n');
+                }
+                alert('Listas importadas do ficheiro JSON.');
+                e.target.value = '';
+                return;
+            } catch (_) {}
+
+            // CSV/TXT format: sections separated by headers
+            // Expected format:
+            // [Localizações] or LOCALIZAÇÕES or ## Localizações
+            // item1
+            // item2
+            // [Anomalias] or ANOMALIAS
+            // item1
+            // ...
+            const lines = text.split('\n').map((l) => l.trim());
+            let currentSection = null;
+            const sections = { locations: [], anomalies: [], works: [] };
+
+            for (const line of lines) {
+                const lower = line.toLowerCase().replace(/[\[\]#*]/g, '').trim();
+                if (lower.startsWith('localiza')) {
+                    currentSection = 'locations';
+                } else if (lower.startsWith('anomalia')) {
+                    currentSection = 'anomalies';
+                } else if (lower.startsWith('trabalho')) {
+                    currentSection = 'works';
+                } else if (line.length > 0 && currentSection) {
+                    // Remove CSV separators and bullet points
+                    const clean = line.replace(/^[-•*]\s*/, '').replace(/^"\s*/, '').replace(/"\s*$/, '').trim();
+                    if (clean.length > 0) sections[currentSection].push(clean);
+                }
+            }
+
+            if (sections.locations.length > 0) {
+                $('#settings-locations').value = sections.locations.join('\n');
+            }
+            if (sections.anomalies.length > 0) {
+                $('#settings-anomalies').value = sections.anomalies.join('\n');
+            }
+            if (sections.works.length > 0) {
+                $('#settings-works').value = sections.works.join('\n');
+            }
+
+            const total = sections.locations.length + sections.anomalies.length + sections.works.length;
+            alert(`${total} itens importados (${sections.locations.length} loc., ${sections.anomalies.length} anom., ${sections.works.length} trab.)`);
+        } catch (err) {
+            alert('Erro ao importar listas: ' + err.message);
+        }
+        e.target.value = '';
+    });
+
+    $('#btn-export-lists').addEventListener('click', () => {
+        const data = {
+            locations: settings.locations || [],
+            anomalies: settings.anomalies || [],
+            works: settings.works || [],
+        };
+        downloadJson(data, 'listas_inspecao.json');
+    });
+
+    // ----------------------------------------------------------
+    // PDF Report Generation
+    // ----------------------------------------------------------
+    $('#btn-generate-pdf').addEventListener('click', async () => {
+        const ins = await dbGet('inspections', currentInspectionId);
+        if (!ins) return;
+
+        if (!ins.photos || ins.photos.length === 0) {
+            alert('Nenhuma foto para incluir no relatório.');
+            return;
+        }
+
+        // Show progress
+        const overlay = document.createElement('div');
+        overlay.className = 'pdf-overlay';
+        const progress = document.createElement('div');
+        progress.className = 'pdf-progress';
+        progress.innerHTML = '<p>A gerar relatório PDF...</p>';
+        document.body.appendChild(overlay);
+        document.body.appendChild(progress);
+
+        try {
+            await generatePdfReport(ins);
+        } catch (err) {
+            alert('Erro ao gerar PDF: ' + err.message);
+        } finally {
+            document.body.removeChild(overlay);
+            document.body.removeChild(progress);
+        }
+    });
+
+    async function generatePdfReport(ins) {
+        // We use a print-based approach: build an HTML document, open in new window, trigger print
+        const date = new Date(ins.createdAt).toLocaleDateString('pt-PT');
+        const totalRecords = ins.photos.reduce((sum, p) => sum + (p.records ? p.records.length : 0), 0);
+
+        let photosHtml = '';
+        for (let i = 0; i < ins.photos.length; i++) {
+            const photo = ins.photos[i];
+            const records = photo.records || [];
+            const audios = photo.audios || [];
+            const transcriptions = audios
+                .filter((a) => a.transcription)
+                .map((a, j) => `<p><strong>Áudio ${j + 1}:</strong> ${escHtml(a.transcription)}</p>`)
+                .join('');
+
+            let recordsHtml = '';
+            if (records.length > 0) {
+                recordsHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Localização</th>
+                                <th>Anomalia</th>
+                                <th>Trabalho</th>
+                                <th>Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${records
+                                .map(
+                                    (r) => `
+                                <tr>
+                                    <td>${escHtml(r.location)}</td>
+                                    <td>${escHtml(r.anomaly)}</td>
+                                    <td>${escHtml(r.work)}</td>
+                                    <td>${escHtml(r.notes)}</td>
+                                </tr>`
+                                )
+                                .join('')}
+                        </tbody>
+                    </table>`;
+            }
+
+            photosHtml += `
+                <div class="photo-section">
+                    <h3>Foto ${i + 1}</h3>
+                    <img src="${photo.dataUrl}" alt="Foto ${i + 1}">
+                    ${transcriptions ? `<div class="transcriptions"><h4>Transcrições</h4>${transcriptions}</div>` : ''}
+                    ${recordsHtml ? `<div class="records"><h4>Registos</h4>${recordsHtml}</div>` : '<p class="no-records">Sem registos</p>'}
+                </div>`;
+        }
+
+        // Summary table: all records grouped
+        let summaryHtml = '';
+        const allRecords = [];
+        ins.photos.forEach((photo, i) => {
+            (photo.records || []).forEach((r) => {
+                allRecords.push({ ...r, photoNum: i + 1 });
+            });
+        });
+
+        if (allRecords.length > 0) {
+            summaryHtml = `
+                <div class="summary-section">
+                    <h2>Resumo de Registos</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Foto</th>
+                                <th>Localização</th>
+                                <th>Anomalia</th>
+                                <th>Trabalho</th>
+                                <th>Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${allRecords
+                                .map(
+                                    (r) => `
+                                <tr>
+                                    <td>${r.photoNum}</td>
+                                    <td>${escHtml(r.location)}</td>
+                                    <td>${escHtml(r.anomaly)}</td>
+                                    <td>${escHtml(r.work)}</td>
+                                    <td>${escHtml(r.notes)}</td>
+                                </tr>`
+                                )
+                                .join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        const html = `<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório - ${escHtml(ins.number)} - ${escHtml(ins.name)}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #2c3e50; padding: 20px; font-size: 12px; }
+        h1 { font-size: 20px; color: #1a5276; margin-bottom: 4px; }
+        h2 { font-size: 16px; color: #1a5276; margin: 20px 0 10px; page-break-after: avoid; }
+        h3 { font-size: 14px; color: #2980b9; margin-bottom: 8px; page-break-after: avoid; }
+        h4 { font-size: 12px; color: #7f8c8d; margin-bottom: 4px; }
+        .header { border-bottom: 2px solid #1a5276; padding-bottom: 12px; margin-bottom: 16px; }
+        .header .meta { font-size: 13px; color: #7f8c8d; margin-top: 4px; }
+        .photo-section { page-break-inside: avoid; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+        .photo-section img { max-width: 100%; max-height: 300px; object-fit: contain; display: block; margin: 0 auto 10px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 11px; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+        th { background: #f0f3f8; font-weight: 600; color: #1a5276; }
+        .transcriptions { margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 11px; }
+        .transcriptions p { margin-bottom: 4px; }
+        .no-records { color: #999; font-style: italic; font-size: 11px; }
+        .summary-section { page-break-before: always; }
+        @media print { body { padding: 0; } .photo-section { break-inside: avoid; } }
+        @media screen { .no-print { display: block; text-align: center; margin-bottom: 20px; }
+            .no-print button { padding: 12px 24px; background: #1a5276; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; } }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()">Imprimir / Guardar como PDF</button>
+    </div>
+    <div class="header">
+        <h1>${escHtml(ins.number)} - ${escHtml(ins.name)}</h1>
+        <div class="meta">
+            Data: ${date}
+            ${ins.plate ? ' | Matrícula: ' + escHtml(ins.plate) : ''}
+            ${ins.lat && ins.lng ? ' | GPS: ' + ins.lat + ', ' + ins.lng : ''}
+            | ${ins.photos.length} fotos | ${totalRecords} registos
+        </div>
+    </div>
+    ${photosHtml}
+    ${summaryHtml}
+</body>
+</html>`;
+
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+    }
+
+    // ----------------------------------------------------------
     // Init
     // ----------------------------------------------------------
     async function init() {

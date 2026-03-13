@@ -21,6 +21,11 @@
 
     <!-- Screen: List of Inspections -->
     <section id="screen-list" class="screen active">
+        <div class="list-toolbar">
+            <button id="btn-export-all" class="btn-toolbar" title="Exportar Tudo">&#8615; Exportar</button>
+            <button id="btn-import-data" class="btn-toolbar" title="Importar">&#8613; Importar</button>
+            <input type="file" id="import-file-input" accept=".json" class="hidden">
+        </div>
         <div id="inspection-list" class="list-container"></div>
         <button id="btn-new-inspection" class="fab">+</button>
     </section>
@@ -62,6 +67,11 @@
             <button id="btn-take-photo" class="btn-primary btn-large">Tirar Foto</button>
             <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
             <button id="btn-office-phase" class="btn-secondary">Fase de Escritório</button>
+            <div class="detail-actions-row">
+                <button id="btn-merge-inspection" class="btn-secondary btn-small">Juntar Inspeções</button>
+                <button id="btn-export-inspection" class="btn-secondary btn-small">Exportar</button>
+                <button id="btn-generate-pdf" class="btn-secondary btn-small">Relatório PDF</button>
+            </div>
         </div>
         <div id="photo-grid" class="photo-grid"></div>
     </section>
@@ -130,6 +140,11 @@
             <hr class="form-divider">
             <h3 class="form-section-title">Listas Tipificadas</h3>
             <p class="form-hint">Uma opção por linha. Estas listas serão usadas pela IA para classificar os registos.</p>
+            <div class="settings-lists-toolbar">
+                <button type="button" id="btn-import-lists" class="btn-toolbar-sm">Importar Listas (ficheiro .txt/.csv)</button>
+                <input type="file" id="import-lists-file" accept=".txt,.csv,.json" class="hidden">
+                <button type="button" id="btn-export-lists" class="btn-toolbar-sm">Exportar Listas</button>
+            </div>
 
             <div class="form-group">
                 <label for="settings-locations">Localizações</label>
@@ -180,6 +195,18 @@
                     <button type="submit" class="btn-primary">Guardar</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal: Merge Inspections -->
+    <div id="modal-merge" class="modal hidden">
+        <div class="modal-content">
+            <h3>Juntar Inspeções</h3>
+            <p class="form-hint" style="margin-bottom:12px">Selecione a inspeção cujas fotos serão adicionadas à inspeção atual. A inspeção selecionada será eliminada após a junção.</p>
+            <div id="merge-list" class="merge-list"></div>
+            <div class="modal-actions">
+                <button id="btn-cancel-merge" class="btn-secondary">Cancelar</button>
+            </div>
         </div>
     </div>
 

@@ -787,3 +787,126 @@ header h1 {
 .record-card.ai-generated {
     border-left: 3px solid #8e44ad;
 }
+
+/* Toolbar */
+.list-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px 0;
+}
+
+.btn-toolbar {
+    padding: 8px 14px;
+    background: var(--card);
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-toolbar:active {
+    background: rgba(26, 82, 118, 0.05);
+}
+
+.btn-toolbar-sm {
+    padding: 6px 10px;
+    background: var(--card);
+    color: var(--primary-light);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-toolbar-sm:active {
+    background: rgba(26, 82, 118, 0.05);
+}
+
+.settings-lists-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.detail-actions-row {
+    display: flex;
+    gap: 8px;
+}
+
+.detail-actions-row .btn-small {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 12px;
+}
+
+/* Merge modal */
+.merge-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.merge-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.merge-item:active {
+    background: rgba(41, 128, 185, 0.1);
+}
+
+.merge-item-info {
+    flex: 1;
+}
+
+.merge-item-info h4 {
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+
+.merge-item-info p {
+    font-size: 12px;
+    color: var(--text-light);
+}
+
+/* PDF progress */
+.pdf-progress {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--card);
+    padding: 24px 32px;
+    border-radius: var(--radius);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    text-align: center;
+    z-index: 300;
+}
+
+.pdf-progress p {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.pdf-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 299;
+}
