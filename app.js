@@ -409,14 +409,69 @@
     }
 
     // Audio recording
+    let speechRecognition = null;
+    let liveTranscript = '';
+
     $('#btn-record').addEventListener('click', startRecording);
     $('#btn-stop-record').addEventListener('click', stopRecording);
+
+    function getRecorderMimeType() {
+        // Safari/iOS needs mp4, Chrome/Android supports webm
+        const types = ['audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
+        for (const type of types) {
+            if (MediaRecorder.isTypeSupported(type)) return type;
+        }
+        return '';
+    }
+
+    function startSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return null;
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-PT';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        liveTranscript = '';
+        let finalTranscript = '';
+
+        recognition.onresult = (e) => {
+            let interim = '';
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+                const text = e.results[i][0].transcript;
+                if (e.results[i].isFinal) {
+                    finalTranscript += text + ' ';
+                } else {
+                    interim = text;
+                }
+            }
+            liveTranscript = finalTranscript + interim;
+            const liveEl = $('#live-transcript');
+            if (liveEl) liveEl.textContent = liveTranscript || 'A ouvir...';
+        };
+
+        recognition.onerror = () => {}; // silently ignore
+        recognition.onend = () => {
+            // Restart if still recording (speech recognition auto-stops)
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                try { recognition.start(); } catch (_) {}
+            }
+        };
+
+        try {
+            recognition.start();
+        } catch (_) {}
+        return recognition;
+    }
 
     async function startRecording() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             audioChunks = [];
-            mediaRecorder = new MediaRecorder(stream);
+            const mimeType = getRecorderMimeType();
+            const options = mimeType ? { mimeType } : {};
+            mediaRecorder = new MediaRecorder(stream, options);
 
             mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) audioChunks.push(e.data);
@@ -424,19 +479,36 @@
 
             mediaRecorder.onstop = async () => {
                 stream.getTracks().forEach((t) => t.stop());
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                // Stop speech recognition
+                if (speechRecognition) {
+                    try { speechRecognition.stop(); } catch (_) {}
+                    speechRecognition = null;
+                }
+                const actualType = mimeType || 'audio/webm';
+                const blob = new Blob(audioChunks, { type: actualType });
                 const dataUrl = await blobToDataUrl(blob);
+
+                const audioEntry = { dataUrl };
+                // Save local transcription if available
+                if (liveTranscript && liveTranscript.trim().length > 0) {
+                    audioEntry.transcription = liveTranscript.trim();
+                }
 
                 const ins = await dbGet('inspections', currentInspectionId);
                 if (!ins.photos[currentPhotoIndex].audios) {
                     ins.photos[currentPhotoIndex].audios = [];
                 }
-                ins.photos[currentPhotoIndex].audios.push({ dataUrl });
+                ins.photos[currentPhotoIndex].audios.push(audioEntry);
                 await dbPut('inspections', ins);
+                liveTranscript = '';
                 renderPhotoDetail();
             };
 
             mediaRecorder.start();
+
+            // Start local speech recognition in parallel
+            speechRecognition = startSpeechRecognition();
+
             $('#btn-record').classList.add('hidden');
             $('#recording-indicator').classList.remove('hidden');
 
@@ -455,6 +527,9 @@
     function stopRecording() {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
+        }
+        if (speechRecognition) {
+            try { speechRecognition.stop(); } catch (_) {}
         }
         clearInterval(recTimerInterval);
         $('#recording-indicator').classList.add('hidden');

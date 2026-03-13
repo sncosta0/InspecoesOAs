@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspecoes-oa-v2';
+const CACHE_NAME = 'inspecoes-oa-v3';
 const ASSETS = [
     './',
     './index.html',
