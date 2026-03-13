@@ -1379,15 +1379,139 @@ REGRAS:
     }
 
     // ----------------------------------------------------------
+    // Private Browsing Detection
+    // ----------------------------------------------------------
+    async function checkPrivateBrowsing() {
+        try {
+            // Safari private mode: IndexedDB works but storage is ephemeral
+            // Test by writing to localStorage and checking storage estimate
+            const testKey = '__private_test__';
+            localStorage.setItem(testKey, '1');
+            localStorage.removeItem(testKey);
+
+            // Safari private mode detection via storage estimate
+            if (navigator.storage && navigator.storage.estimate) {
+                const estimate = await navigator.storage.estimate();
+                // In private mode, Safari typically reports very low quota
+                if (estimate.quota && estimate.quota < 120000000) {
+                    return true; // Likely private mode
+                }
+            }
+
+            // Alternative detection: try to persist storage (always fails in private)
+            if (navigator.storage && navigator.storage.persist) {
+                const persistent = await navigator.storage.persist();
+                // In private mode this always returns false, but also returns false
+                // when user hasn't granted permission, so combine with other signals
+                if (!persistent && window.safari !== undefined) {
+                    // Safari-specific: check if FileSystem API is restricted
+                    try {
+                        const root = await navigator.storage.getDirectory();
+                        // If we get here, we might be in normal mode
+                    } catch (_) {
+                        return true; // Private mode blocks this
+                    }
+                }
+            }
+        } catch (_) {
+            // localStorage throws in some private mode scenarios
+            return true;
+        }
+        return false;
+    }
+
+    function showPrivateModeWarning() {
+        const banner = document.createElement('div');
+        banner.id = 'private-mode-warning';
+        banner.innerHTML = `
+            <div class="warning-banner">
+                <strong>AVISO: Modo Privado Detetado!</strong>
+                <p>Está a usar navegação privada. Todos os dados (fotos, áudios, inspeções) serão <strong>permanentemente apagados</strong> quando fechar esta janela.</p>
+                <p>Use o Safari em modo <strong>normal</strong> para manter os seus dados.</p>
+                <button onclick="this.parentElement.parentElement.remove()">Entendi o risco</button>
+            </div>`;
+        document.body.prepend(banner);
+    }
+
+    // ----------------------------------------------------------
+    // Backup Reminder
+    // ----------------------------------------------------------
+    function checkBackupReminder() {
+        const lastBackup = localStorage.getItem('inspecoesoa_last_backup');
+        const lastReminder = localStorage.getItem('inspecoesoa_last_reminder');
+        const now = Date.now();
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+
+        // Don't remind more than once per session
+        if (lastReminder && (now - parseInt(lastReminder)) < ONE_DAY) return;
+
+        // Remind if never backed up, or if last backup was > 1 day ago
+        if (!lastBackup || (now - parseInt(lastBackup)) > ONE_DAY) {
+            // Check if there are inspections to back up
+            dbGetAll('inspections').then((inspections) => {
+                if (inspections.length === 0) return;
+                const totalPhotos = inspections.reduce((sum, ins) => sum + (ins.photos ? ins.photos.length : 0), 0);
+                if (totalPhotos === 0) return;
+
+                localStorage.setItem('inspecoesoa_last_reminder', String(now));
+
+                const banner = document.createElement('div');
+                banner.id = 'backup-reminder';
+                banner.innerHTML = `
+                    <div class="reminder-banner">
+                        <strong>Lembrete: Faça backup!</strong>
+                        <p>Tem ${inspections.length} inspeção(ões) com ${totalPhotos} fotos sem backup recente.</p>
+                        <div class="reminder-actions">
+                            <button id="btn-backup-now" class="btn-reminder-primary">Exportar Agora</button>
+                            <button onclick="this.closest('#backup-reminder').remove()">Mais tarde</button>
+                        </div>
+                    </div>`;
+                document.body.prepend(banner);
+
+                document.getElementById('btn-backup-now').addEventListener('click', async () => {
+                    try {
+                        await downloadJsonChunked(inspections, 'inspecoes_oa_backup.json');
+                        localStorage.setItem('inspecoesoa_last_backup', String(Date.now()));
+                        banner.remove();
+                    } catch (err) {
+                        alert('Erro ao exportar: ' + err.message);
+                    }
+                });
+            });
+        }
+    }
+
+    // Mark backup timestamp when user exports manually
+    const origExportAll = $('#btn-export-all');
+    if (origExportAll) {
+        const origHandler = origExportAll.onclick;
+        origExportAll.addEventListener('click', () => {
+            localStorage.setItem('inspecoesoa_last_backup', String(Date.now()));
+        });
+    }
+
+    // ----------------------------------------------------------
     // Init
     // ----------------------------------------------------------
     async function init() {
         await openDB();
+
+        // Check for private browsing
+        const isPrivate = await checkPrivateBrowsing();
+        if (isPrivate) {
+            showPrivateModeWarning();
+        }
+
         renderInspectionList();
         showScreen(screenList, 'Inspeções OA', false);
 
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+
+        // Check backup reminder (after a short delay to not block first render)
+        if (!isPrivate) {
+            setTimeout(checkBackupReminder, 2000);
         }
     }
 

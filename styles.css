@@ -910,3 +910,86 @@ header h1 {
     background: rgba(0,0,0,0.4);
     z-index: 299;
 }
+
+/* Private mode warning */
+.warning-banner {
+    background: #c0392b;
+    color: white;
+    padding: 16px 20px;
+    font-size: 14px;
+    line-height: 1.5;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.warning-banner strong {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 6px;
+}
+
+.warning-banner p {
+    margin-bottom: 6px;
+}
+
+.warning-banner button {
+    margin-top: 8px;
+    padding: 10px 20px;
+    background: white;
+    color: #c0392b;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Backup reminder */
+.reminder-banner {
+    background: #f39c12;
+    color: #2c3e50;
+    padding: 14px 20px;
+    font-size: 14px;
+    line-height: 1.5;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 400;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+.reminder-banner strong {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
+.reminder-banner p {
+    margin-bottom: 8px;
+}
+
+.reminder-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.reminder-actions button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255,255,255,0.5);
+    color: #2c3e50;
+}
+
+.btn-reminder-primary {
+    background: #2c3e50 !important;
+    color: white !important;
+}
