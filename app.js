@@ -995,21 +995,43 @@ REGRAS:
     }
 
     // ----------------------------------------------------------
+    // Safe event binding (handles cache mismatch HTML/JS)
+    // ----------------------------------------------------------
+    function on(selector, event, handler) {
+        const el = $(selector);
+        if (el) el.addEventListener(event, handler);
+    }
+
+    // ----------------------------------------------------------
     // Export / Import Inspections
     // ----------------------------------------------------------
-    $('#btn-export-all').addEventListener('click', async () => {
-        const inspections = await dbGetAll('inspections');
-        downloadJson(inspections, 'inspecoes_oa_backup.json');
+    on('#btn-export-all', 'click', async () => {
+        const btn = $('#btn-export-all');
+        btn.disabled = true;
+        btn.textContent = 'A exportar...';
+        try {
+            const inspections = await dbGetAll('inspections');
+            await downloadJsonChunked(inspections, 'inspecoes_oa_backup.json');
+        } catch (err) {
+            alert('Erro ao exportar: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '⤓ Exportar';
+        }
     });
 
-    $('#btn-export-inspection').addEventListener('click', async () => {
+    on('#btn-export-inspection', 'click', async () => {
         const ins = await dbGet('inspections', currentInspectionId);
         if (!ins) return;
-        downloadJson([ins], `inspecao_${ins.number || ins.id}.json`);
+        try {
+            await downloadJsonChunked([ins], `inspecao_${ins.number || ins.id}.json`);
+        } catch (err) {
+            alert('Erro ao exportar: ' + err.message);
+        }
     });
 
     function downloadJson(data, filename) {
-        const json = JSON.stringify(data, null, 2);
+        const json = JSON.stringify(data);
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1018,14 +1040,62 @@ REGRAS:
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    $('#btn-import-data').addEventListener('click', () => {
+    // Chunked export: writes JSON piece by piece to avoid Safari memory crash
+    async function downloadJsonChunked(inspections, filename) {
+        const parts = [];
+        parts.push('[');
+        for (let i = 0; i < inspections.length; i++) {
+            if (i > 0) parts.push(',');
+            // Serialize each inspection individually to keep memory lower
+            const ins = inspections[i];
+            // Build JSON manually for photos to avoid huge stringify
+            const meta = {
+                id: ins.id,
+                name: ins.name,
+                number: ins.number,
+                plate: ins.plate,
+                lat: ins.lat,
+                lng: ins.lng,
+                createdAt: ins.createdAt,
+            };
+            parts.push('{"id":' + JSON.stringify(meta.id));
+            parts.push(',"name":' + JSON.stringify(meta.name));
+            parts.push(',"number":' + JSON.stringify(meta.number));
+            parts.push(',"plate":' + JSON.stringify(meta.plate));
+            parts.push(',"lat":' + JSON.stringify(meta.lat));
+            parts.push(',"lng":' + JSON.stringify(meta.lng));
+            parts.push(',"createdAt":' + JSON.stringify(meta.createdAt));
+            parts.push(',"photos":[');
+            for (let j = 0; j < (ins.photos || []).length; j++) {
+                if (j > 0) parts.push(',');
+                // Each photo serialized individually
+                parts.push(JSON.stringify(ins.photos[j]));
+                // Yield to browser to avoid locking up
+                if (j % 5 === 0) await new Promise((r) => setTimeout(r, 0));
+            }
+            parts.push(']}');
+        }
+        parts.push(']');
+
+        const blob = new Blob(parts, { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+
+    on('#btn-import-data', 'click', () => {
         $('#import-file-input').click();
     });
 
-    $('#import-file-input').addEventListener('change', async (e) => {
+    on('#import-file-input', 'change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         try {
@@ -1050,7 +1120,7 @@ REGRAS:
     // ----------------------------------------------------------
     // Merge Inspections
     // ----------------------------------------------------------
-    $('#btn-merge-inspection').addEventListener('click', async () => {
+    on('#btn-merge-inspection', 'click', async () => {
         const inspections = await dbGetAll('inspections');
         const others = inspections.filter((i) => i.id !== currentInspectionId);
 
@@ -1097,18 +1167,18 @@ REGRAS:
         $('#modal-merge').classList.remove('hidden');
     });
 
-    $('#btn-cancel-merge').addEventListener('click', () => {
+    on('#btn-cancel-merge', 'click', () => {
         $('#modal-merge').classList.add('hidden');
     });
 
     // ----------------------------------------------------------
     // Import / Export Lists
     // ----------------------------------------------------------
-    $('#btn-import-lists').addEventListener('click', () => {
+    on('#btn-import-lists', 'click', () => {
         $('#import-lists-file').click();
     });
 
-    $('#import-lists-file').addEventListener('change', async (e) => {
+    on('#import-lists-file', 'change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         try {
@@ -1132,13 +1202,6 @@ REGRAS:
             } catch (_) {}
 
             // CSV/TXT format: sections separated by headers
-            // Expected format:
-            // [Localizações] or LOCALIZAÇÕES or ## Localizações
-            // item1
-            // item2
-            // [Anomalias] or ANOMALIAS
-            // item1
-            // ...
             const lines = text.split('\n').map((l) => l.trim());
             let currentSection = null;
             const sections = { locations: [], anomalies: [], works: [] };
@@ -1152,7 +1215,6 @@ REGRAS:
                 } else if (lower.startsWith('trabalho')) {
                     currentSection = 'works';
                 } else if (line.length > 0 && currentSection) {
-                    // Remove CSV separators and bullet points
                     const clean = line.replace(/^[-•*]\s*/, '').replace(/^"\s*/, '').replace(/"\s*$/, '').trim();
                     if (clean.length > 0) sections[currentSection].push(clean);
                 }
@@ -1176,7 +1238,7 @@ REGRAS:
         e.target.value = '';
     });
 
-    $('#btn-export-lists').addEventListener('click', () => {
+    on('#btn-export-lists', 'click', () => {
         const data = {
             locations: settings.locations || [],
             anomalies: settings.anomalies || [],
@@ -1188,7 +1250,7 @@ REGRAS:
     // ----------------------------------------------------------
     // PDF Report Generation
     // ----------------------------------------------------------
-    $('#btn-generate-pdf').addEventListener('click', async () => {
+    on('#btn-generate-pdf', 'click', async () => {
         const ins = await dbGet('inspections', currentInspectionId);
         if (!ins) return;
 
@@ -1217,99 +1279,13 @@ REGRAS:
     });
 
     async function generatePdfReport(ins) {
-        // We use a print-based approach: build an HTML document, open in new window, trigger print
         const date = new Date(ins.createdAt).toLocaleDateString('pt-PT');
         const totalRecords = ins.photos.reduce((sum, p) => sum + (p.records ? p.records.length : 0), 0);
 
-        let photosHtml = '';
-        for (let i = 0; i < ins.photos.length; i++) {
-            const photo = ins.photos[i];
-            const records = photo.records || [];
-            const audios = photo.audios || [];
-            const transcriptions = audios
-                .filter((a) => a.transcription)
-                .map((a, j) => `<p><strong>Áudio ${j + 1}:</strong> ${escHtml(a.transcription)}</p>`)
-                .join('');
+        // Build HTML in chunks to avoid memory issues
+        const parts = [];
 
-            let recordsHtml = '';
-            if (records.length > 0) {
-                recordsHtml = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Localização</th>
-                                <th>Anomalia</th>
-                                <th>Trabalho</th>
-                                <th>Observações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${records
-                                .map(
-                                    (r) => `
-                                <tr>
-                                    <td>${escHtml(r.location)}</td>
-                                    <td>${escHtml(r.anomaly)}</td>
-                                    <td>${escHtml(r.work)}</td>
-                                    <td>${escHtml(r.notes)}</td>
-                                </tr>`
-                                )
-                                .join('')}
-                        </tbody>
-                    </table>`;
-            }
-
-            photosHtml += `
-                <div class="photo-section">
-                    <h3>Foto ${i + 1}</h3>
-                    <img src="${photo.dataUrl}" alt="Foto ${i + 1}">
-                    ${transcriptions ? `<div class="transcriptions"><h4>Transcrições</h4>${transcriptions}</div>` : ''}
-                    ${recordsHtml ? `<div class="records"><h4>Registos</h4>${recordsHtml}</div>` : '<p class="no-records">Sem registos</p>'}
-                </div>`;
-        }
-
-        // Summary table: all records grouped
-        let summaryHtml = '';
-        const allRecords = [];
-        ins.photos.forEach((photo, i) => {
-            (photo.records || []).forEach((r) => {
-                allRecords.push({ ...r, photoNum: i + 1 });
-            });
-        });
-
-        if (allRecords.length > 0) {
-            summaryHtml = `
-                <div class="summary-section">
-                    <h2>Resumo de Registos</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Foto</th>
-                                <th>Localização</th>
-                                <th>Anomalia</th>
-                                <th>Trabalho</th>
-                                <th>Observações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${allRecords
-                                .map(
-                                    (r) => `
-                                <tr>
-                                    <td>${r.photoNum}</td>
-                                    <td>${escHtml(r.location)}</td>
-                                    <td>${escHtml(r.anomaly)}</td>
-                                    <td>${escHtml(r.work)}</td>
-                                    <td>${escHtml(r.notes)}</td>
-                                </tr>`
-                                )
-                                .join('')}
-                        </tbody>
-                    </table>
-                </div>`;
-        }
-
-        const html = `<!DOCTYPE html>
+        parts.push(`<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
@@ -1350,13 +1326,54 @@ REGRAS:
             ${ins.lat && ins.lng ? ' | GPS: ' + ins.lat + ', ' + ins.lng : ''}
             | ${ins.photos.length} fotos | ${totalRecords} registos
         </div>
-    </div>
-    ${photosHtml}
-    ${summaryHtml}
-</body>
-</html>`;
+    </div>`);
 
-        const blob = new Blob([html], { type: 'text/html' });
+        const allRecords = [];
+
+        for (let i = 0; i < ins.photos.length; i++) {
+            const photo = ins.photos[i];
+            const records = photo.records || [];
+            const audios = photo.audios || [];
+
+            records.forEach((r) => allRecords.push({ ...r, photoNum: i + 1 }));
+
+            const transcriptions = audios
+                .filter((a) => a.transcription)
+                .map((a, j) => `<p><strong>Áudio ${j + 1}:</strong> ${escHtml(a.transcription)}</p>`)
+                .join('');
+
+            let recordsHtml = '';
+            if (records.length > 0) {
+                recordsHtml = `<div class="records"><h4>Registos</h4><table><thead><tr>
+                    <th>Localização</th><th>Anomalia</th><th>Trabalho</th><th>Observações</th>
+                    </tr></thead><tbody>${records.map((r) => `<tr>
+                    <td>${escHtml(r.location)}</td><td>${escHtml(r.anomaly)}</td>
+                    <td>${escHtml(r.work)}</td><td>${escHtml(r.notes)}</td></tr>`).join('')}
+                    </tbody></table></div>`;
+            }
+
+            // Add photo as its own blob part to keep each chunk small
+            parts.push(`<div class="photo-section"><h3>Foto ${i + 1}</h3>`);
+            parts.push(`<img src="${photo.dataUrl}" alt="Foto ${i + 1}">`);
+            if (transcriptions) parts.push(`<div class="transcriptions"><h4>Transcrições</h4>${transcriptions}</div>`);
+            parts.push(recordsHtml || '<p class="no-records">Sem registos</p>');
+            parts.push('</div>');
+
+            // Yield to browser
+            if (i % 3 === 0) await new Promise((r) => setTimeout(r, 0));
+        }
+
+        if (allRecords.length > 0) {
+            parts.push(`<div class="summary-section"><h2>Resumo de Registos</h2>
+                <table><thead><tr><th>Foto</th><th>Localização</th><th>Anomalia</th><th>Trabalho</th><th>Observações</th></tr></thead><tbody>`);
+            parts.push(allRecords.map((r) => `<tr><td>${r.photoNum}</td><td>${escHtml(r.location)}</td>
+                <td>${escHtml(r.anomaly)}</td><td>${escHtml(r.work)}</td><td>${escHtml(r.notes)}</td></tr>`).join(''));
+            parts.push('</tbody></table></div>');
+        }
+
+        parts.push('</body></html>');
+
+        const blob = new Blob(parts, { type: 'text/html' });
         const url = URL.createObjectURL(blob);
         window.open(url, '_blank');
     }
